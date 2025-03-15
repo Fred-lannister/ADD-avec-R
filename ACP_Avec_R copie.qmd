@@ -1,0 +1,375 @@
+---
+title: "ACP_EN_R"
+format: html
+editor: visual
+---
+
+## Les étapes pour construire une ACP
+
+## Application de l'ACP en pratique
+
+## Base de données
+
+La base de données contient les performances des athlètes à une compétition de décathlon. La base contient 41 lignes et inlut des résultats pour diverses épreuves telles que le 100m, le saut en longueur, le lancer du poids, etc. Chaque ligne détaille les performances d'un athlète dans chaque épreuve, son classement, le total des points, et le nom de la compétition.
+
+L'objectif de l'ACP sur cette base de données est double:
+
+-L'ACP permettra d'identifier les épreuves qui sont le plus fortement corrélées entre elles, de d**éterminer les épreuves les plus influentes pour le score total**, et de déceler des patterns ou des groupes d'épreuves qui ont tendance à aller de pair dans la détermination des performances athlétiques.
+
+-L'ACP aidera à **identifier des groupes d'athlètes avec des profils de compétences similaires,** de découvrir des athlètes qui se distinguent dans certaines épreuves, et de visualiser la dispersion des athlètes en fonction de leur polyvalence et de leurs forces et faiblesses spécifiques. Cela fournira des insights sur la manière dont les compétences et les performances individuelles se répartissent au sein de l'ensemble des participants.
+
+# Utilité pratique du projet
+
+1.  **Identification des Facteurs Clés de Réussite** : En analysant les corrélations entre différentes épreuves, l'ACP peut révéler quelles compétences et quelles épreuves sont les plus déterminantes pour réussir en décathlon. Cela peut aider les entraîneurs et les athlètes à cibler leurs entraînements sur les aspects les plus influents.
+
+2.  **Stratégies d'Entraînement et de Compétition** : En comprenant les forces et les faiblesses des athlètes individuels, les entraîneurs peuvent élaborer des stratégies d'entraînement personnalisées. Cela peut également aider à développer des stratégies de compétition, en se concentrant sur les épreuves où les athlètes sont les plus susceptibles de gagner des points.
+
+3.  **Sélection et Recrutement d'Athlètes** : Les équipes et les organisations sportives peuvent utiliser les résultats de l'ACP pour identifier des athlètes ayant des profils de compétences particuliers qui correspondent à leurs besoins ou à leur philosophie de formation.
+
+4.  **Engagement des Fans et des Médias** : Les résultats de l'analyse peuvent être utilisés pour créer des narrations intéressantes pour les fans et les médias, en mettant en lumière les subtilités des performances des athlètes et les dynamiques complexes du décathlon.
+
+# Etape 1: Importation et description des données
+
+```{r}
+# Définir l'URL du fichier
+url <- "https://raw.githubusercontent.com/LeCoinStat/LeCoinStat/main/ACPAvecR/data/decathlon.txt"
+
+# Importer les données
+decathlon_data <- read.table(url, header = TRUE, sep = "\t")
+
+# Afficher les premières lignes pour vérifier
+head(decathlon_data)
+```
+
+```{r}
+
+# Renommer les colonnes avec des noms de compétitions sportives en français
+colnames(decathlon_data) <-  c(
+  "Course100m",     # X100m
+  "SautEnLongueur", # Long.jump
+  "LancerDePoids",  # Shot.put
+  "SautEnHauteur",  # High.jump
+  "Course400m",     # X400m
+  "Course110mHaies",# X110m.hurdle
+  "LancerDeDisque", # Discus
+  "SautALaPerche",  # Pole.vault
+  "LancerDeJavelot",# Javeline
+  "Course1500m",    # X1500m
+  "Classement",     # Rank
+  "Points",         # Points
+  "Compétition"     # Competition
+)
+
+head(decathlon_data)
+```
+
+```{r}
+summary(decathlon_data)
+```
+
+## Analyse des valeurs manquantes
+
+```{r}
+# Fonction pour calculer la proportion de valeurs manquantes par variable
+proportion_valeurs_manquantes <- function(data) {
+    # Calcul du nombre de valeurs manquantes par colonne
+  nb_valeurs_manquantes <- sapply(data, function(x) sum(is.na(x)))
+
+  # Calcul de la proportion de valeurs manquantes
+  proportion_manquantes <- nb_valeurs_manquantes / nrow(data)
+
+  # Création d'un dataframe pour le résultat
+  resultat <- data.frame(Nombre = nb_valeurs_manquantes, Proportion = proportion_manquantes)
+
+  return(resultat)
+}
+
+# Utilisation de la fonction avec votre base de données
+resultat <- proportion_valeurs_manquantes(decathlon_data)
+
+# Affichage du résultat
+resultat
+```
+
+```{r}
+
+# Charger le package VIM
+if (!require(dplyr)) install.packages("VIM")
+library(VIM)
+
+# Utilisation de la fonction aggr() pour visualiser les valeurs manquantes
+aggr(decathlon_data, col=c('navyblue','yellow'), numbers=TRUE, sortVars=TRUE, 
+     labels=names(decathlon_data), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+
+```
+
+## Description des variables quantitatives
+
+```{r}
+# Installer les packages nécessaires si ce n'est pas déjà fait
+if (!require(ggplot2)) install.packages("ggplot2")
+
+# Charger les packages
+library(ggplot2)
+# Identifier les colonnes quantitatives
+vars_quantitatives <- sapply(decathlon_data, is.numeric)
+
+
+
+# Créer un histogramme pour chaque variable quantitative
+for (var in names(decathlon_data)[vars_quantitatives]) {
+  print(ggplot(decathlon_data, aes_string(x = var)) +
+          geom_histogram(bins = 30, fill = "blue", color = "black") +
+          theme_minimal() +
+          labs(title = paste("Histogramme de", var), x = var, y = "Fréquence"))
+}
+
+```
+
+```{r}
+# Créer un boxplot pour chaque variable quantitative
+
+for (var in names(decathlon_data)[vars_quantitatives]) {
+  print(ggplot(decathlon_data, aes_string(x = factor(1), y = var)) +
+          geom_boxplot(fill = "skyblue", color = "darkblue") +
+          theme_minimal() +
+          labs(title = paste("Boxplot de", var), x = "", y = var))
+}
+```
+
+```{r}
+
+# Fonction pour créer un barplot en proportions
+creer_barplot_proportion <- function(data, column_name) {
+  # Calculer les proportions
+  proportions <- data %>%
+    count(.data[[column_name]]) %>%
+    mutate(Proportion = n / sum(n))
+
+  # Créer le barplot
+  ggplot(proportions, aes_string(x = column_name, y = "Proportion", fill = column_name)) +
+    geom_bar(stat = "identity") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(x = column_name, y = "Proportion (%)") +
+    theme_minimal()
+}
+
+# Créer un barplot pour la variable "Compétition"
+creer_barplot_proportion(decathlon_data, "Compétition")
+```
+
+# Etape 2: Analyser les corrélations entre les variables quantitatives
+
+```{r}
+# Installer les packages si nécessaire
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(corrplot)) install.packages("corrplot")
+
+
+# Charger les packages
+library(ggplot2)
+library(corrplot)
+
+
+donnees_quantitatives <- decathlon_data[, vars_quantitatives]
+
+
+
+# Calculer la matrice de corrélation
+matrice_correlation <- cor(donnees_quantitatives, use = "complete.obs")
+
+
+# Créer la heatmap de corrélation avec des coefficients plus visibles
+corrplot(matrice_correlation, method = "color", type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, 
+         addCoef.col = "black", # Couleur des coefficients
+         cl.pos = "n", # Position de la légende de couleur
+         cl.cex = 1.2, # Taille de la légende de couleur
+         addCoefasPercent = TRUE, # Afficher les coefficients en pourcentage
+         number.cex = 0.8) # Taille des chiffres des coefficients
+
+   
+```
+
+### Etape 3: Centrer et réduire les données
+
+```{r}
+# Centrer et réduire les données
+donnees_centrees_reduites <- scale(donnees_quantitatives,center = TRUE,scale=TRUE)
+?scale
+```
+
+# Etape 4: Réalisation de l'ACP avec Factominer
+
+```{r}
+# Installer les packages si nécessaire
+if (!require("FactoMineR")) install.packages("FactoMineR")
+if (!require("devtools")) install.packages("devtools")
+library("devtools")
+install_github("kassambara/factoextra")
+
+# Charger les packages
+library(FactoMineR)
+library("factoextra")
+# Réaliser l'ACP
+resultat_acp <- PCA(donnees_centrees_reduites, graph = FALSE)
+
+# Afficher les résultats de l'ACP
+print(resultat_acp)
+```
+
+## Choix du nombre d'axe factoriel
+
+```{r}
+valeurspropres <- resultat_acp$eig
+valeurspropres
+```
+
+```{r}
+barplot(valeurspropres[, 2], names.arg=1:nrow(valeurspropres), 
+       main = "Pourcentage de la variance expliquée par chaque composante",
+       xlab = "Composantes principales",
+       ylab = "Pourcentage de variance expliquée",
+       col ="steelblue")
+# Add connected line segments to the plot
+lines(x = 1:nrow(valeurspropres), valeurspropres[, 2], 
+      type="b", pch=19, col = "red")
+```
+
+```{r}
+#Utilisation du package factoextra
+# Créer le graphique des valeurs propres
+fviz_eig(resultat_acp, addlabels = TRUE)
+
+```
+
+## Représentation du cercle de corrélation
+
+```{r}
+
+# Créer le graphique du cercle de corrélation
+fviz_pca_var(resultat_acp, 
+             col.var = "cos2", # Utiliser la qualité de représentation (cos2) pour la couleur
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), # Palette de couleurs
+             repel = TRUE, # Éviter le chevauchement des étiquettes
+             title = "Cercle de Corrélation des Variables")
+
+
+```
+
+```{r}
+# Créer le graphique du cercle de corrélation
+# Créer le graphique du cercle de corrélation
+fviz_pca_var(resultat_acp, 
+             col.var = "contrib", # Utiliser la contribution
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), # Palette de couleurs
+             repel = TRUE, # Éviter le chevauchement des étiquettes
+             title = "Cercle de Corrélation des Variables")
+
+```
+
+```{r}
+# Coordonnées des individus
+head(resultat_acp$ind$coord)
+
+# Cos 2 des individus
+head(resultat_acp$ind$cos2)
+#Contribution des individus
+head(resultat_acp$ind$contrib)
+```
+
+```{r}
+# Contributions of variables to PC1"
+fviz_contrib(resultat_acp, choice = "var", axes = 1, top = 3)
+# Contributions of variables to PC2
+fviz_contrib(resultat_acp, choice = "var", axes = 2, top = 10)
+```
+
+```{r}
+# Cosinus carré des variables sur la première composante principale (PC1)
+fviz_cos2(resultat_acp, choice = "var", axes = 1, top = 10) +
+  ggtitle("Qualité de la représentation des variables sur la PC1 (cos²)")
+
+# Cosinus carré des variables sur la deuxième composante principale (PC2)
+fviz_cos2(resultat_acp, choice = "var", axes = 2, top = 10) +
+  ggtitle("Qualité de la représentation des variables sur la PC2 (cos²)")
+```
+
+```{r}
+fviz_pca_ind(resultat_acp,  col.ind="cos2") +
+scale_color_gradient2(low="blue", mid="white", 
+                      high="red", midpoint=0.50)+
+  theme_minimal()
+```
+
+```{r}
+
+# Filtrer les individus avec cos² > 50%
+ind_cos2 <- apply(resultat_acp$ind$cos2, 1, max) > 0.5
+
+# Filtrer les variables avec cos² > 50%
+var_cos2 <- apply(resultat_acp$var$cos2, 1, max) > 0.5
+
+# Créer un graphique combiné des individus et des variables
+fviz_pca_biplot(resultat_acp,
+                select.ind = list(cos2 = 0.5), # Sélectionner les individus avec cos² > 50%
+                select.var = list(cos2 = 0.5), # Sélectionner les variables avec cos² > 50%
+                repel = TRUE, # Éviter le chevauchement des étiquettes
+                title = "Biplot des Individus et des Variables (cos² > 50%)",
+                col.ind = "blue", # Couleur des individus
+                col.var = "red" # Couleur des variables
+                )
+```
+
+# Ajout des variables supplémentaires
+
+```{r}
+resultat_acp <- PCA(decathlon_data, 
+                    quanti.sup = 10,
+                    quali.sup = 13, # Numéro de colonne de la variable qualitative
+                    graph = TRUE)
+```
+
+```{r}
+fviz_pca_ind(resultat_acp, habillage = 13,
+  addEllipses =TRUE, ellipse.level = 0.68) +
+  scale_color_brewer(palette="Dark2") +
+  theme_minimal()
+```
+
+```{r}
+# Création du graphique
+fviz_pca_ind(resultat_acp, habillage = 13, # Utiliser la 13ème colonne pour le coloriage
+             addEllipses = TRUE, ellipse.level = 0.68) +
+  scale_color_brewer(palette = "Dark2") + # Palette de couleurs
+  theme_minimal() + # Thème minimaliste
+  ggtitle("ACP avec R") # Ajouter un titre (assurez-vous que le titre n'est pas NA/NaN)
+```
+
+```{r}
+resultat_acp$quanti.sup
+```
+
+```{r}
+res.desc <- dimdesc(resultat_acp, axes = c(4,5), proba = 0.05)
+# Description of dimension 1
+res.desc
+```
+
+# Quiz
+
+1.  **Quelle action réaliser en premier parmi les 3 actions suivantes pour mettre en place une ACP?**
+
+    -   A\) Normaliser les données pour avoir une moyenne de zéro et une variance de un.
+
+    -   B\) Calculer la matrice de covariance des données.
+
+    -   C\) Sélectionner les composantes principales qui expliquent le plus de variance.
+
+2.  **Comment l'introduction de variables supplémentaires est-elle gérée dans l'ACP ?**
+
+    -   A\) Les variables supplémentaires sont intégrées dans le calcul des composantes principales pour modifier la structure de variance.
+
+    -   B\) Les variables supplémentaires sont utilisées pour interpréter les composantes principales mais ne sont pas intégrées dans le calcul des axes principaux.
+
+    -   C\) Les variables supplémentaires remplacent les variables initiales si elles expliquent une plus grande part de la variance.
